@@ -1,4 +1,4 @@
-# Elastic Notepad
+# SpaceTabs Notepad
 
 Wouldn't it be nice if we could use proportional fonts to write code and still
 have things line up? Well, thanks to
