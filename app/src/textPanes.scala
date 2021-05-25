@@ -313,7 +313,7 @@ package object textPanes {
         fm = new Canvas().getFontMetrics(elasticFont)
         setFont(elasticFont)
         setElasticTabstopsDocFilter()
-        updateText(this.text)  // force update of tabstop positions
+        alignTabstops()  // force update of tabstop positions
       } else {
         setFont(nonElasticFont)
       }
@@ -337,7 +337,11 @@ package object textPanes {
     def openScratchFile(scratchFilePath: Path, settings: Settings): Unit = {
       if (currentPath != scratchFilePath && (!modified || Dialog.showConfirmation(message = "There are unsaved changes. Are you sure you want to switch to the scratch file?") == Result.Ok)) {
         currentPath = scratchFilePath
-        setNewText(if (settings.filesAreNonElastic) spacesToTabs(loadScratchFile) else loadScratchFile)
+        setNewText(
+          if (settings.filesAreNonElastic && _elastic) spacesToTabs(loadScratchFile)
+          else if (!settings.filesAreNonElastic && !_elastic) tabsToSpaces(loadScratchFile, settings.nonElasticTabSize)
+          else loadScratchFile
+        )
       }
     }
 
@@ -345,7 +349,11 @@ package object textPanes {
       if (!modified || Dialog.showConfirmation(message = "There are unsaved changes. Are you sure you want to open another file?") == Result.Ok) {
         chooseAndLoadTextFile foreach { case (loadedText, path) =>
           currentPath = path
-          setNewText(if (settings.filesAreNonElastic) spacesToTabs(loadedText) else loadedText)
+          setNewText(
+            if (settings.filesAreNonElastic && _elastic) spacesToTabs(loadedText)
+            else if (!settings.filesAreNonElastic && !_elastic) tabsToSpaces(loadedText, settings.nonElasticTabSize)
+            else loadedText
+          )
         }
       }
     }
