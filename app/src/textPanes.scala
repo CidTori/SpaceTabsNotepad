@@ -47,7 +47,7 @@ package object textPanes:
       fm = new Canvas().getFontMetrics(elasticFont)
       setFont(elasticFont)
       setElasticTabstopsDocFilter()
-      updateText(this.text)  // force update of tabstop positions
+      alignTabstops()  // force update of tabstop positions
 
     protected def setFont(font: Font) =
       val attributes = new SimpleAttributeSet
@@ -285,14 +285,22 @@ package object textPanes:
       val msg = "There are unsaved changes. Are you sure you want to switch to the scratch file?"
       if currentPath != scratchFilePath && (!modified || Dialog.showConfirmation(message = msg) == Result.Ok) then
         currentPath = scratchFilePath
-        setNewText(if settings.filesAreNonElastic.value then spacesToTabs(loadScratchFile()) else loadScratchFile())
+        setNewText(
+          if settings.filesAreNonElastic.value && _elastic then spacesToTabs(loadScratchFile())
+          else if !settings.filesAreNonElastic.value && !_elastic then tabsToSpaces(loadScratchFile(), settings.nonElasticTabSize.value)
+          else loadScratchFile()
+        )
 
     def openFile(settings: Settings): Unit =
       val msg = "There are unsaved changes. Are you sure you want to open another file?"
       if !modified || Dialog.showConfirmation(message = msg) == Result.Ok then
         chooseAndLoadTextFile foreach { case (loadedText, path) =>
           currentPath = path
-          setNewText(if settings.filesAreNonElastic.value then spacesToTabs(loadedText) else loadedText)
+          setNewText(
+            if settings.filesAreNonElastic.value && _elastic then spacesToTabs(loadedText)
+            else if !settings.filesAreNonElastic.value && !_elastic then tabsToSpaces(loadedText, settings.nonElasticTabSize.value)
+            else loadedText
+          )
         }
 
     def saveFile(settings: Settings): Unit =
