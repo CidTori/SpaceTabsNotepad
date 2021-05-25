@@ -1,68 +1,68 @@
 import org.scalatest.FlatSpec
 
-import elasticTabstops.{calcTabstopPositions, spacesToTabs, tabsToSpaces}
+import elasticTabstops.{calcElasticTabstopPositions, smartTabsToSpaceTabs, spaceTabsToSmartTabs}
 
 
 class ElasticTabstopsSpec extends FlatSpec {
 
-  "tabsToSpaces" should "replace tabs with spaces correctly" in {
-    assert(tabsToSpaces("\ty", 4) == "    y")
-    assert(tabsToSpaces("x\ty", 4) == "x   y")
-    assert(tabsToSpaces("xxxxxxx\ty", 4) == "xxxxxxx  y")
+  "spaceTabsToSmartTabs" should "replace space tabs with smart tabs correctly" in {
+    assert(spaceTabsToSmartTabs(" \t\ty", 4) == "    \ty")
+    assert(spaceTabsToSmartTabs("x \t\ty", 4) == "x   \ty")
+    assert(spaceTabsToSmartTabs("xxxxxxx \t\ty", 4) == "xxxxxxx  \ty")
 
     val given = List(
-      "\ty",
-      "xxxxxxx\ty"
+      " \t\ty",
+      "xxxxxxx \t\ty"
     ).mkString("\n")
 
     val expected = List(
-      "         y",
-      "xxxxxxx  y"
+      "         \ty",
+      "xxxxxxx  \ty"
     ).mkString("\n")
 
-    assert(tabsToSpaces(given, 4) == expected)
+    assert(spaceTabsToSmartTabs(given, 4) == expected)
 
     val given2 = List(
-      "\t",
-      "xxxxxxx"
+      " \t",
+      "xxxxxxx\t"
     ).mkString("\n")
 
     val expected2 = List(
       "",
-      "xxxxxxx"
+      "xxxxxxx\t"
     ).mkString("\n")
 
-    assert(tabsToSpaces(given2, 4) == expected2)
+    assert(spaceTabsToSmartTabs(given2, 4) == expected2)
   }
 
   "spacesToTabs" should "replace spaces with tabs correctly" in {
-    assert(spacesToTabs("    y") == "\ty")
-    assert(spacesToTabs("x   y") == "x\ty")
-    assert(spacesToTabs("xxxxxxx  y") == "xxxxxxx\ty")
+    assert(smartTabsToSpaceTabs("    \ty", 4) == " \t\ty")
+    assert(smartTabsToSpaceTabs("x   \ty", 4) == "x \t\ty")
+    assert(smartTabsToSpaceTabs("xxxxxxx  \ty", 4) == "xxxxxxx \t\ty")
 
     val given = List(
-      "         y",
-      "xxxxxxx  y"
+      "         \ty",
+      "xxxxxxx  \ty"
     ).mkString("\n")
 
     val expected = List(
-      "\ty",
-      "xxxxxxx\ty"
+      " \t\ty",
+      "xxxxxxx \t\ty"
     ).mkString("\n")
 
-    assert(spacesToTabs(given) == expected)
+    assert(smartTabsToSpaceTabs(given, 4) == expected)
 
     val given2 = List(
       "       ",
-      "xxxxxxx"
+      "xxx\t"
     ).mkString("\n")
 
     val expected2 = List(
       "",
-      "xxxxxxx"
+      "xxx\t"
     ).mkString("\n")
 
-    assert(spacesToTabs(given2) == expected2)
+    assert(smartTabsToSpaceTabs(given2, 4) == expected2)
   }
 
 }

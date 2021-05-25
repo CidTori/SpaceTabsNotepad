@@ -44,9 +44,9 @@ From then on, it can be run with:
 
 	./mill app.run
 
-If you are using IntelliJ IDEA, its project config files can be generated (and regenerated should the build definition change) with:
+If you are using a BSP-compatible IDE, its project config files can be generated (and regenerated should the build definition change) with:
 
-	./mill mill.scalalib.GenIdea/idea
+	./mill mill.bsp.BSP/install
 
 You can build a new jar file with:
 

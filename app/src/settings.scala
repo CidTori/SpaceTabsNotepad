@@ -65,7 +65,7 @@ package object settings {
         (defaults.nonElasticTabSize.toString, nonElasticTabSizeText),
         (defaults.filesAreNonElastic.toString, filesAreNonElasticText)
       )
-      cellsPerLine.map { case (value, (key, description)) => s"$key:\t$value\t| $description" }.mkString("\n")
+      cellsPerLine.map { case (value, (key, description)) => s"$key: \t$value \t| $description" }.mkString("\n")
     }
 
     def load: (Settings, String) = {

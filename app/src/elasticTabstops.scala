@@ -6,7 +6,7 @@ package object elasticTabstops {
 
   // convenience functions to wrap Java's unintuitive split method
   def split(string: String, char: Char) = string.split(char.toString, -1)  // -1 so we get trailing empty strings
-  def splitAndStrip(string: String, char: Char) = string.split(char)
+  def splitAndStrip(string: String, regex: String) = string.split(regex)
 
   // Process runs of Some in list.
   // scala>    processAdjacent((l: List[Option[Int]]) => List.fill(l.length)(Some(l.flatten.max)),
@@ -44,22 +44,28 @@ package object elasticTabstops {
   private def measureWidthsPerLine(cellsPerLine: List[List[String]], measureText: String => Int): List[List[Int]] =
     cellsPerLine.map(_.map(measureText(_)))
 
-  def calcTabstopPositions(cellsPerLine: List[List[String]], measureText: String => Int): List[List[Int]] = {
+  def calcElasticTabstopPositions(cellsPerLine: List[List[String]], measureText: String => Int): List[List[Int]] = {
     val cellWidthsPerLine = measureWidthsPerLine(cellsPerLine, measureText)
 
     calcMaxedWidthsPerLine(cellWidthsPerLine).map(_.scanLeft(0)(_ + _).drop(1))
   }
 
-  def tabsToSpaces(text: String, nofIndentSpaces: Int): String = {
+  def spaceTabsToSmartTabs(text: String, nofIndentSpaces: Int): String = {
     val cellPaddingWidthSpaces = 2  // must be at least 2 so we can convert back to tabs
     val cellMinimumWidthSpaces = nofIndentSpaces - cellPaddingWidthSpaces
-    val cellsPerLine = split(text, '\n').map(splitAndStrip(_, '\t').toList).toList
-    def calcCellWidth(text: String): Int = math.max(text.length, cellMinimumWidthSpaces) + cellPaddingWidthSpaces
+    val cellsPerLine = split(text, '\n').map(splitAndStrip(_, " \t").toList).toList
+    def calcCellWidth(text: String): Int = {
+      val textWithSoftTabs = text.replaceAll("\t"," " * nofIndentSpaces)
+      math.max(textWithSoftTabs.length, cellMinimumWidthSpaces) + cellPaddingWidthSpaces
+    }
     val maxedWidthsPerLine = calcMaxedWidthsPerLine(measureWidthsPerLine(cellsPerLine, calcCellWidth))
 
     maxedWidthsPerLine.zip(cellsPerLine).map { case (widthsThisLine, cellsThisLine) =>
       cellsThisLine.zip(widthsThisLine :+ 0).map { case (cellText, width) =>
-        cellText + (" " * (width - cellText.length))
+        {
+          val cellTextWithSoftTabs = cellText.replaceAll("\t"," " * nofIndentSpaces)
+          cellText + (" " * (width - cellTextWithSoftTabs.length))
+        }
       }.mkString
     }.mkString("\n")
   }
@@ -73,16 +79,21 @@ package object elasticTabstops {
     }.toArray
   }
 
-  private def getMatchesPerLine(lines: Array[String]): Array[Map[Int, String]] = {
+  private def getMatchesPerLine(lines: Array[String], nofIndentSpaces: Int): Array[Map[Int, String]] = {
     // a non-space followed by any number of chars that are either a non-space or a space followed by a non-space
     val cellTextRegEx = "[^ ](?:[^ ]| (?=[^ ]))*".r
 
     // get maps for each line containing the position of text and the text itself
-    lines.map(cellTextRegEx.findAllMatchIn(_).map(m => m.start -> m.matched).toMap)
+    lines.map(s => {
+      val sWithFakeSoftTabs = s.replaceAll("\t", "-" * nofIndentSpaces)
+      cellTextRegEx.findAllMatchIn(sWithFakeSoftTabs).map(m => m.start)
+      .zip(cellTextRegEx.findAllMatchIn(s).map(m => m.matched))
+      .toMap
+    })
   }
 
-  private def getPossCellsFromText(lines: Array[String]): Array[Array[Option[String]]] = {
-    val matchesPerLine = getMatchesPerLine(lines)
+  private def getPossCellsFromText(lines: Array[String], nofIndentSpaces: Int): Array[Array[Option[String]]] = {
+    val matchesPerLine = getMatchesPerLine(lines, nofIndentSpaces)
     val positionsPerLine = matchesPerLine.map(_.keys)
     val maybeLastPosPerLine = positionsPerLine.map(_.toList.maxOption)
 
@@ -98,14 +109,14 @@ package object elasticTabstops {
     }
   }
 
-  def spacesToTabs(text: String): String = {
+  def smartTabsToSpaceTabs(text: String, nofIndentSpaces: Int): String = {
     // split text into lines prepended with a non-whitespace character (so the first cell of each line is not empty)
     val lines = split(text, '\n').map("|" + _)
 
-    val possCellsPerCol = getPossCellsFromText(lines)
+    val possCellsPerCol = getPossCellsFromText(lines, nofIndentSpaces)
 
     // replace empty columns with Nones, transpose, remove Nones, and join with tabs
-    val textPerLine = possCellsPerCol.toList.map(nullifyEmptyRuns).transpose.map(_.flatten).map(_.mkString("\t"))
+    val textPerLine = possCellsPerCol.toList.map(nullifyEmptyRuns).transpose.map(_.flatten).map(_.mkString(" \t"))
 
     // finally, drop previously prepended non-whitespace character from each line and join with newlines
     textPerLine.map(_.drop(1)).mkString("\n")

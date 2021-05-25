@@ -13,7 +13,7 @@ import scala.swing.event.{Key, KeyPressed}
 
 import BuildInfo.{appName, appVersion}
 
-import elasticTabstops.{split, splitAndStrip, calcTabstopPositions, spacesToTabs, tabsToSpaces}
+import elasticTabstops.{split, splitAndStrip, calcElasticTabstopPositions, smartTabsToSpaceTabs, spaceTabsToSmartTabs}
 import fileHandling.{chooseAndLoadTextFile, loadScratchFile, loadTextFile, saveTextFile, saveTextFileAs, scratchFilePath}
 import settings.{FontCC, Settings}
 
@@ -71,24 +71,26 @@ package object textPanes {
       val startOfLineOffset = root.getElement(lineNum).getStartOffset
       val posOnLine = caretPos - startOfLineOffset
       val lineTextToCaret = this.text.drop(startOfLineOffset).take(posOnLine)
-      val minimalWhitespacePos = lineTextToCaret.replaceAll("[ \t]+", " ").length
+      val minimalWhitespacePos = lineTextToCaret.replaceAll(" \t|  +", " ").length
       (lineNum, minimalWhitespacePos)
     }
 
     @annotation.tailrec
-    final def minimiseMultipleWhitespace(unprocessed: List[(Char, Int)],
-                                         processed: List[(Char, Int)] = Nil): List[(Char, Int)] =
+    final def minimiseAlignmentWhitespace(unprocessed: List[(Char, Int)],
+                                          processed: List[(Char, Int)] = Nil): List[(Char, Int)] =
       unprocessed.headOption match {
         case None => processed
         case Some(charAndPos) => {
           val (newCharAndPos, dropLength) = charAndPos match {
-            case (char, pos) if char == ' ' || char == '\t' => {
-              val run = unprocessed.takeWhile { case (c, _) => c == ' ' || c == '\t' }
-              ((' ', pos), run.length)
+            case (char, pos) if char == ' ' => {
+              val spaceAndPos = (' ', pos)
+              val run = unprocessed.takeWhile { case (c, _) => c == ' ' }
+              if (run.length > 1 || unprocessed(1)._1 != '\t') (spaceAndPos, run.length)
+              else (spaceAndPos, 2)
             }
-            case nonWhitespaceCharAndPos => (nonWhitespaceCharAndPos, 1)
+            case nonSpaceAndPos => (nonSpaceAndPos, 1)
           }
-          minimiseMultipleWhitespace(unprocessed.drop(dropLength), processed :+ newCharAndPos)
+          minimiseAlignmentWhitespace(unprocessed.drop(dropLength), processed :+ newCharAndPos)
         }
       }
 
@@ -97,7 +99,7 @@ package object textPanes {
       val root = peer.getDocument.getDefaultRootElement
       val startOfLineOffset = root.getElement(lineNum).getStartOffset
       val indexedLineText = split(this.text, '\n').drop(lineNum).take(1).flatten.zipWithIndex
-      val minimalWhitespaceOnly = minimiseMultipleWhitespace(indexedLineText.toList)
+      val minimalWhitespaceOnly = minimiseAlignmentWhitespace(indexedLineText.toList)
       val pos = minimalWhitespaceOnly.lift(minimalWhitespacePos) match {
         case Some((_, pos)) => pos
         case None => minimalWhitespaceOnly.lastOption match {
@@ -139,6 +141,15 @@ package object textPanes {
       (recalcStart, recalcLength)
     }
 
+    @annotation.tailrec
+    final def countTabstopsPerCell(unprocessed: List[Boolean],
+                                   processed: List[Int] = Nil): List[Int] = {
+      unprocessed.headOption match {
+        case None => processed
+        case Some(_) => countTabstopsPerCell(unprocessed.drop(1).dropWhile(!_), processed :+ (1 + unprocessed.drop(1).takeWhile(!_).length))
+      }
+    }
+
     def alignTabstops(startAndLength: Option[(Int, Int)] = None): Unit = {
       val doc = peer.getDocument.asInstanceOf[StyledDocument]
       val section = doc.getDefaultRootElement
@@ -153,9 +164,22 @@ package object textPanes {
 
       val elements = allElements.drop(recalcStart).take(recalcLength)
       val textPerLine = elements.map(el => doc.getText(el.getStartOffset, el.getEndOffset - el.getStartOffset))
-      val cellsPerLine = textPerLine.map(splitAndStrip(_, '\t').toList)
-      def calcCellWidth(text: String): Int = math.max(fm.stringWidth(text), emptyColumnWidthMinusPaddingPx) + columnPaddingPx
-      for ((tabstopPositionsThisLine, element) <- calcTabstopPositions(cellsPerLine, calcCellWidth).zip(elements)) {
+      val cellsPerLine = textPerLine.map(splitAndStrip(_, " \t").toList)
+      val emptyColumnWidthPx = emptyColumnWidthMinusPaddingPx + columnPaddingPx
+      def calcCellWidth(text: String): Int = {
+        val nofNonElasticTabs = "\t".r.findAllMatchIn(text).length
+        val textWithoutNonElasticTabs = text.replaceAll("\t","")
+        math.max(fm.stringWidth(textWithoutNonElasticTabs), emptyColumnWidthMinusPaddingPx) + columnPaddingPx + nofNonElasticTabs * emptyColumnWidthPx
+      }
+      for ((elasticTabstopPositionsThisLine, element) <- calcElasticTabstopPositions(cellsPerLine, calcCellWidth).zip(elements)) {
+        val text = doc.getText(element.getStartOffset, element.getEndOffset - element.getStartOffset)
+        val tabsThisLineIsSpaceTab = "( )?\t".r.findAllMatchIn(text).map(_.group(1) != null).toList
+        val tabstopPositionsThisLine = (0 +: elasticTabstopPositionsThisLine).zip(countTabstopsPerCell(true +: tabsThisLineIsSpaceTab))
+          .flatMap {
+            case (elasticTabstopPositionThisCell, nofTabstopsThisCell) => (0 until nofTabstopsThisCell)
+              .map(elasticTabstopPositionThisCell + _ * emptyColumnWidthPx)
+          }
+          .drop(1)
         val tabStops = tabstopPositionsThisLine.map(new TabStop(_))
         val attributes = new SimpleAttributeSet()
         StyleConstants.setTabSet(attributes, new TabSet(tabStops.toArray))
@@ -276,7 +300,7 @@ package object textPanes {
       }
     }
 
-    setNewText(if (filesAreNonElastic) spacesToTabs(fileContents) else fileContents)
+    setNewText(if (filesAreNonElastic) smartTabsToSpaceTabs(fileContents, nonElasticTabSize) else fileContents)
 
     private var _elastic = true
     def elastic = _elastic
@@ -287,13 +311,22 @@ package object textPanes {
           // elastic on
           fm = new Canvas().getFontMetrics(elasticFont)
           setFont(elasticFont)
+          val pxSettings = getPxVersionsOfEmSettings
+          emptyColumnWidthMinusPaddingPx = pxSettings._1
+          columnPaddingPx = pxSettings._2
           setElasticTabstopsDocFilter()
-          updateText(spacesToTabs(this.text))
+          updateText(smartTabsToSpaceTabs(this.text, nonElasticTabSize))
+          alignTabstops()  // force update of tabstop positions // TODO debug to see why it's not called by setText
         } else {
           // elastic off
+          fm = new Canvas().getFontMetrics(nonElasticFont)
           setFont(nonElasticFont)
+          val spaceWidthPx = fm.stringWidth(" ")
+          columnPaddingPx = 2 * spaceWidthPx
+          emptyColumnWidthMinusPaddingPx = nonElasticTabSize * spaceWidthPx - columnPaddingPx
           peer.getDocument().asInstanceOf[AbstractDocument].setDocumentFilter(new DocumentFilter)
-          updateText(tabsToSpaces(this.text, nonElasticTabSize))
+          updateText(spaceTabsToSmartTabs(this.text, nonElasticTabSize))
+          alignTabstops()  // force update of tabstop positions // TODO debug to see why it's not called by setText
         }
       }
     }
@@ -306,16 +339,21 @@ package object textPanes {
       nonElasticFont = newNonElasticFont
       nonElasticTabSize = newNonElasticTabSize
 
-      val pxSettings = getPxVersionsOfEmSettings
-      emptyColumnWidthMinusPaddingPx = pxSettings._1
-      columnPaddingPx = pxSettings._2
       if (_elastic) {
         fm = new Canvas().getFontMetrics(elasticFont)
         setFont(elasticFont)
+        val pxSettings = getPxVersionsOfEmSettings
+        emptyColumnWidthMinusPaddingPx = pxSettings._1
+        columnPaddingPx = pxSettings._2
         setElasticTabstopsDocFilter()
         alignTabstops()  // force update of tabstop positions
       } else {
+        fm = new Canvas().getFontMetrics(nonElasticFont)
         setFont(nonElasticFont)
+        val spaceWidthPx = fm.stringWidth(" ")
+        columnPaddingPx = 2 * spaceWidthPx
+        emptyColumnWidthMinusPaddingPx = nonElasticTabSize * spaceWidthPx - columnPaddingPx
+        alignTabstops()  // force update of tabstop positions
       }
     }
 
@@ -338,8 +376,8 @@ package object textPanes {
       if (currentPath != scratchFilePath && (!modified || Dialog.showConfirmation(message = "There are unsaved changes. Are you sure you want to switch to the scratch file?") == Result.Ok)) {
         currentPath = scratchFilePath
         setNewText(
-          if (settings.filesAreNonElastic && _elastic) spacesToTabs(loadScratchFile)
-          else if (!settings.filesAreNonElastic && !_elastic) tabsToSpaces(loadScratchFile, settings.nonElasticTabSize)
+          if (settings.filesAreNonElastic && _elastic) smartTabsToSpaceTabs(loadScratchFile, settings.nonElasticTabSize)
+          else if (!settings.filesAreNonElastic && !_elastic) spaceTabsToSmartTabs(loadScratchFile, settings.nonElasticTabSize)
           else loadScratchFile
         )
       }
@@ -350,8 +388,8 @@ package object textPanes {
         chooseAndLoadTextFile foreach { case (loadedText, path) =>
           currentPath = path
           setNewText(
-            if (settings.filesAreNonElastic && _elastic) spacesToTabs(loadedText)
-            else if (!settings.filesAreNonElastic && !_elastic) tabsToSpaces(loadedText, settings.nonElasticTabSize)
+            if (settings.filesAreNonElastic && _elastic) smartTabsToSpaceTabs(loadedText, settings.nonElasticTabSize)
+            else if (!settings.filesAreNonElastic && !_elastic) spaceTabsToSmartTabs(loadedText, settings.nonElasticTabSize)
             else loadedText
           )
         }
@@ -359,13 +397,13 @@ package object textPanes {
     }
 
     def saveFile(settings: Settings): Unit = {
-      val textToSave = if (settings.filesAreNonElastic) tabsToSpaces(text, settings.nonElasticTabSize) else text
+      val textToSave = if (settings.filesAreNonElastic) spaceTabsToSmartTabs(text, settings.nonElasticTabSize) else text
       saveTextFile(textToSave, currentPath)
       modified = false
     }
 
     def saveFileAs(settings: Settings): Unit = {
-      val textToSave = if (settings.filesAreNonElastic) tabsToSpaces(text, settings.nonElasticTabSize) else text
+      val textToSave = if (settings.filesAreNonElastic) spaceTabsToSmartTabs(text, settings.nonElasticTabSize) else text
       saveTextFileAs(textToSave) foreach { path =>
         currentPath = path
         modified = false
