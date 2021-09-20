@@ -13,7 +13,7 @@ import scala.swing.event.ButtonClicked
 import scala.swing.FlowPanel.Alignment.Left
 import scala.swing.{Action, BorderPanel, BoxPanel, Button, Dialog, FlowPanel, MainFrame, Menu, MenuBar, MenuItem, Orientation, ScrollPane, Separator, SimpleSwingApplication, ToggleButton}
 import com.bulenkov.darcula.DarculaLaf
-import elasticTabstops.{smartTabsToSpaceTabs, spaceTabsToSmartTabs}
+import elasticTabstops.{spacesToSpaceTabs, spaceTabsToSpaces}
 import fileHandling.{chooseAndLoadTextFile, loadScratchFile, saveTextFile, saveTextFileAs, scratchFilePath}
 import settings.{FontCC, Settings}
 import textPanes.{EditorTextPane, ElasticTextPane}

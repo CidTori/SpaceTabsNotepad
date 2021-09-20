@@ -33,39 +33,65 @@ package object elasticTabstops {
     }
   }
 
-  private def calcMaxedWidthsPerLine(widthsPerLine: List[List[Int]]) : List[List[Int]] = {
-    val maxNofCells = widthsPerLine.map(_.length).max
+  private def calcMaxedWidthsPerLine(widthsPerLine: List[List[(Int, Int)]]) : List[List[Int]] = {
+    val maxSpaceTab = (widthsPerLine.flatMap(_.map(_._1)) :+ 0).max
+    val tabstopsPerLine2 = widthsPerLine.map(l => l
+      .scanLeft(List.fill(maxSpaceTab+1)(0))((acc, v) => List.fill(v._1)(0) ::: ((acc(v._1)+1) +: acc.drop(v._1+1)))
+      .drop(1)
+      .map(_.reverse)
+      .zip(l.map(_._2))
+    )
+    val allTabstops2 = tabstopsPerLine2.flatten.map(_._1).distinct.sortWith((left, right) => left.zip(right)
+      .foldLeft((false, false))((acc, v) => (!acc._2 && (acc._1 || v._1 < v._2), !acc._1 && (acc._2 || v._1 > v._2)))._1)
+    return allTabstops2.foldLeft(List(List.fill(tabstopsPerLine2.length)(Option.empty[Int])))((acc, v) => {
+      val lengthsPerLineThisTabstop = tabstopsPerLine2.map(_.find(t => t._1 == v).map(_._2))
 
-    val widthsPerCol = (0 until maxNofCells).map(idx => widthsPerLine.map(_.dropRight(1).lift(idx)))
+      val previousTabstopsPerLine = acc.transpose.map(_.flatten.lastOption)
+      val vvv = previousTabstopsPerLine.zip(lengthsPerLineThisTabstop).map {
+        case (Some(previousTabstop), Some(length)) => Some(previousTabstop + length)
+        case (None, Some(length)) => Some(length)
+        case (_, None) => None
+      }
+      acc :+ maxAdjacent(vvv)
+    }).drop(1).transpose.map(_.flatten).map(l => l.zip(0 +: l.dropRight(1)).map(pair => pair._1 - pair._2))
 
-    widthsPerCol.map(maxAdjacent).toList.transpose.map(_.takeWhile(_.isDefined).flatten)
+    val tabstopsPerLine = widthsPerLine.map(l => if (l.isEmpty) Nil else l.drop(1).scanLeft((0, l.head._1, l.head._2))((acc, v) => (if (v._1 <= acc._2) acc._1 + 1 else acc._1, v._1, v._2)))
+    println("tabstopsPerLine: "+tabstopsPerLine)
+    val allTabstops = tabstopsPerLine.flatten.map(c => (c._1, c._2)).distinct.sorted
+    println("allTabstops: "+allTabstops)
+    allTabstops.foldLeft(List(List.fill(tabstopsPerLine.length)(Option.empty[Int])))((acc, v) => {
+      val lengthsPerLineThisTabstop = tabstopsPerLine.map(_.find(t => t._1 == v._1 && t._2 == v._2).map(_._3))
+
+      val previousTabstopsPerLine = acc.transpose.map(_.flatten.lastOption)
+      val vvv = previousTabstopsPerLine.zip(lengthsPerLineThisTabstop).map {
+        case (Some(previousTabstop), Some(length)) => Some(previousTabstop + length)
+        case (None, Some(length)) => Some(length)
+        case (_, None) => None
+      }
+      acc :+ maxAdjacent(vvv)
+    }).drop(1).transpose.map(_.flatten).map(l => l.zip(0 +: l.dropRight(1)).map(pair => pair._1 - pair._2))
   }
 
-  private def measureWidthsPerLine(cellsPerLine: List[List[String]], measureText: String => Int): List[List[Int]] =
-    cellsPerLine.map(_.map(measureText(_)))
+  private def measureWidthsPerLine(cellsPerLine: List[List[(Int, String)]], measureText: String => Int): List[List[(Int, Int)]] =
+    cellsPerLine.map(_.map(p => (p._1, measureText(p._2))))
 
-  def calcElasticTabstopPositions(cellsPerLine: List[List[String]], measureText: String => Int): List[List[Int]] = {
+  def calcElasticTabstopPositions(cellsPerLine: List[List[(Int, String)]], measureText: String => Int): List[List[Int]] = {
     val cellWidthsPerLine = measureWidthsPerLine(cellsPerLine, measureText)
 
     calcMaxedWidthsPerLine(cellWidthsPerLine).map(_.scanLeft(0)(_ + _).drop(1))
   }
 
-  def spaceTabsToSmartTabs(text: String, nofIndentSpaces: Int): String = {
+  def spaceTabsToSpaces(text: String, nofIndentSpaces: Int): String = {
     val cellPaddingWidthSpaces = 2  // must be at least 2 so we can convert back to tabs
     val cellMinimumWidthSpaces = nofIndentSpaces - cellPaddingWidthSpaces
-    val cellsPerLine = split(text, '\n').map(splitAndStrip(_, " \t").toList).toList
-    def calcCellWidth(text: String): Int = {
-      val textWithSoftTabs = text.replaceAll("\t"," " * nofIndentSpaces)
-      math.max(textWithSoftTabs.length, cellMinimumWidthSpaces) + cellPaddingWidthSpaces
-    }
-    val maxedWidthsPerLine = calcMaxedWidthsPerLine(measureWidthsPerLine(cellsPerLine, calcCellWidth))
+    val cellsPerLine = split(text, '\n').map(splitAndStrip(_, "( *)\t").toList).toList
+    val cellsPerLine2 = split(text, '\n').map("((?:[^\t]*[^ \t])?)( *)\t".r.findAllMatchIn(_).toList.map(m => (m.group(2).length, m.group(1)))).toList
+    def calcCellWidth(text: String): Int = math.max(text.length, cellMinimumWidthSpaces) + cellPaddingWidthSpaces
+    val maxedWidthsPerLine = calcMaxedWidthsPerLine(measureWidthsPerLine(cellsPerLine2, calcCellWidth))
 
     maxedWidthsPerLine.zip(cellsPerLine).map { case (widthsThisLine, cellsThisLine) =>
       cellsThisLine.zip(widthsThisLine :+ 0).map { case (cellText, width) =>
-        {
-          val cellTextWithSoftTabs = cellText.replaceAll("\t"," " * nofIndentSpaces)
-          cellText + (" " * (width - cellTextWithSoftTabs.length))
-        }
+        cellText + (" " * (width - cellText.length))
       }.mkString
     }.mkString("\n")
   }
@@ -73,9 +99,9 @@ package object elasticTabstops {
   // Replace each item in a run with None if all of its contents are empty strings.
   // scala>      nullifyEmptyRuns(List(Some(""), Some("a"), None, Some(""), Some("")))
   // res0: List[Option[String]] = List(Some(""), Some("a"), None, None,     None))
-  private def nullifyEmptyRuns(column: Array[Option[String]]): Array[Option[String]] = {
+  private def nullifyEmptyRuns(column: Array[Option[(Int, String)]]): Array[Option[(Int, String)]] = {
     processAdjacent(column.toList) { l =>
-      if (l.forall(_.contains(""))) List.fill[Option[String]](l.length)(None) else l
+      if (l.forall(_.exists(_._2.isEmpty))) List.fill[Option[(Int, String)]](l.length)(None) else l
     }.toArray
   }
 
@@ -84,15 +110,10 @@ package object elasticTabstops {
     val cellTextRegEx = "[^ ](?:[^ ]| (?=[^ ]))*".r
 
     // get maps for each line containing the position of text and the text itself
-    lines.map(s => {
-      val sWithFakeSoftTabs = s.replaceAll("\t", "-" * nofIndentSpaces)
-      cellTextRegEx.findAllMatchIn(sWithFakeSoftTabs).map(m => m.start)
-      .zip(cellTextRegEx.findAllMatchIn(s).map(m => m.matched))
-      .toMap
-    })
+    lines.map(s => cellTextRegEx.findAllMatchIn(s).map(m => m.start -> m.matched).toMap)
   }
 
-  private def getPossCellsFromText(lines: Array[String], nofIndentSpaces: Int): Array[Array[Option[String]]] = {
+  private def getPossCellsFromText(lines: Array[String], nofIndentSpaces: Int): Array[Array[Option[(Int, String)]]] = {
     val matchesPerLine = getMatchesPerLine(lines, nofIndentSpaces)
     val positionsPerLine = matchesPerLine.map(_.keys)
     val maybeLastPosPerLine = positionsPerLine.map(_.toList.maxOption)
@@ -102,21 +123,40 @@ package object elasticTabstops {
 
     // create Options at every possible cell position
     allPositions.map { pos =>
-      matchesPerLine.zip(maybeLastPosPerLine).map { case (matchesThisLine, maybeLastPosThisLine) =>
-        if (matchesThisLine.contains(pos)) Some(matchesThisLine(pos))
-        else maybeLastPosThisLine.flatMap(lastPosThisLine => if (pos <= lastPosThisLine) Some("") else None)
+      matchesPerLine.zip(lines).map { case (matchesThisLine, line) =>
+        if (matchesThisLine.contains(pos)) Some((pos, matchesThisLine(pos)))
+        else None
       }
     }
   }
 
-  def smartTabsToSpaceTabs(text: String, nofIndentSpaces: Int): String = {
+  def spacesToSpaceTabs(text: String, nofIndentSpaces: Int): String = { // FIXME
     // split text into lines prepended with a non-whitespace character (so the first cell of each line is not empty)
     val lines = split(text, '\n').map("|" + _)
 
     val possCellsPerCol = getPossCellsFromText(lines, nofIndentSpaces)
 
     // replace empty columns with Nones, transpose, remove Nones, and join with tabs
-    val textPerLine = possCellsPerCol.toList.map(nullifyEmptyRuns).transpose.map(_.flatten).map(_.mkString(" \t"))
+    val textPerLine = possCellsPerCol.toList.map(nullifyEmptyRuns)
+      .transpose.map(l => {
+        Some((0, l.head.get._2)) +: l.drop(1).map(_.map(t => {
+          val previousCell = l.takeWhile(cc => cc.isEmpty || cc.get._1 != t._1).flatten.last
+          val nofSpaces = t._1 - (previousCell._1 + previousCell._2.length)
+          val indentationLevel = if (nofSpaces % nofIndentSpaces == 0) nofSpaces / nofIndentSpaces else 0
+          (indentationLevel, t._2)
+        }))
+      }).transpose
+      .map(processAdjacent(_) { run =>
+        if (run.head.isDefined && !run.forall(_.get._1 == run.head.get._1)) run.map(_.map(p => (0, p._2)))
+        else run
+      })
+      .zipWithIndex.map(col => col._1.map(_.map(p => (col._2, p._1, p._2))))
+      .transpose.map(_.flatten)
+      .map(_.map(t => {
+        if (t._2 != 0) "\t" * t._2 + t._3
+        else if (t._1 != 0 && t._3.nonEmpty) " " * t._1 + "\t" + t._3
+        else t._3
+      }).mkString)
 
     // finally, drop previously prepended non-whitespace character from each line and join with newlines
     textPerLine.map(_.drop(1)).mkString("\n")

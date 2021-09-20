@@ -1,14 +1,14 @@
 import org.scalatest.FlatSpec
 
-import elasticTabstops.{calcElasticTabstopPositions, smartTabsToSpaceTabs, spaceTabsToSmartTabs}
+import elasticTabstops.{calcElasticTabstopPositions, spacesToSpaceTabs, spaceTabsToSpaces}
 
 
 class ElasticTabstopsSpec extends FlatSpec {
 
-  "spaceTabsToSmartTabs" should "replace space tabs with smart tabs correctly" in {
-    assert(spaceTabsToSmartTabs(" \t\ty", 4) == "    \ty")
-    assert(spaceTabsToSmartTabs("x \t\ty", 4) == "x   \ty")
-    assert(spaceTabsToSmartTabs("xxxxxxx \t\ty", 4) == "xxxxxxx  \ty")
+  "spaceTabsToSpaces" should "replace space tabs with spaces correctly" in {
+    assert(spaceTabsToSpaces(" \t\ty", 4) == "    \ty")
+    assert(spaceTabsToSpaces("x \t\ty", 4) == "x   \ty")
+    assert(spaceTabsToSpaces("xxxxxxx \t\ty", 4) == "xxxxxxx  \ty")
 
     val given = List(
       " \t\ty",
@@ -20,7 +20,7 @@ class ElasticTabstopsSpec extends FlatSpec {
       "xxxxxxx  \ty"
     ).mkString("\n")
 
-    assert(spaceTabsToSmartTabs(given, 4) == expected)
+    assert(spaceTabsToSpaces(given, 4) == expected)
 
     val given2 = List(
       " \t",
@@ -32,13 +32,13 @@ class ElasticTabstopsSpec extends FlatSpec {
       "xxxxxxx\t"
     ).mkString("\n")
 
-    assert(spaceTabsToSmartTabs(given2, 4) == expected2)
+    assert(spaceTabsToSpaces(given2, 4) == expected2)
   }
 
   "spacesToTabs" should "replace spaces with tabs correctly" in {
-    assert(smartTabsToSpaceTabs("    \ty", 4) == " \t\ty")
-    assert(smartTabsToSpaceTabs("x   \ty", 4) == "x \t\ty")
-    assert(smartTabsToSpaceTabs("xxxxxxx  \ty", 4) == "xxxxxxx \t\ty")
+    assert(spacesToSpaceTabs("    \ty", 4) == " \t\ty")
+    assert(spacesToSpaceTabs("x   \ty", 4) == "x \t\ty")
+    assert(spacesToSpaceTabs("xxxxxxx  \ty", 4) == "xxxxxxx \t\ty")
 
     val given = List(
       "         \ty",
@@ -50,7 +50,7 @@ class ElasticTabstopsSpec extends FlatSpec {
       "xxxxxxx \t\ty"
     ).mkString("\n")
 
-    assert(smartTabsToSpaceTabs(given, 4) == expected)
+    assert(spacesToSpaceTabs(given, 4) == expected)
 
     val given2 = List(
       "       ",
@@ -62,7 +62,7 @@ class ElasticTabstopsSpec extends FlatSpec {
       "xxx\t"
     ).mkString("\n")
 
-    assert(smartTabsToSpaceTabs(given2, 4) == expected2)
+    assert(spacesToSpaceTabs(given2, 4) == expected2)
   }
 
 }

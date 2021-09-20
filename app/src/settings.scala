@@ -42,7 +42,7 @@ package object settings {
     private val bestAvailableElasticFont = getBestAvailableFont(preferredElasticFonts, fallbackElasticFont)
     private val bestAvailableNonElasticFont = getBestAvailableFont(preferredNonElasticFonts, fallbackNonElasticFont)
 
-    def defaults = Settings(bestAvailableElasticFont, bestAvailableNonElasticFont, 1.8, 0.625, 4, true)
+    def defaults = Settings(bestAvailableElasticFont, bestAvailableNonElasticFont, 1.8, 0.625, 4, false)
 
     private val elasticFontText = ("Elastic font", "Used when elastic tabstops is on (can be proportional)")
     private val nonElasticFontText = ("Non-elastic font", "Used when elastic tabstops is off (monospaced is best)")
@@ -65,7 +65,7 @@ package object settings {
         (defaults.nonElasticTabSize.toString, nonElasticTabSizeText),
         (defaults.filesAreNonElastic.toString, filesAreNonElasticText)
       )
-      cellsPerLine.map { case (value, (key, description)) => s"$key: \t$value \t| $description" }.mkString("\n")
+      cellsPerLine.map { case (value, (key, description)) => s"$key:\t$value\t| $description" }.mkString("\n")
     }
 
     def load: (Settings, String) = {
