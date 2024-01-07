@@ -6,6 +6,7 @@ package object elasticTabstops:
   // convenience functions to wrap Java's unintuitive split method
   def splitByNewline(string: String) = string.split("\n", -1)  // -1 so we get trailing empty lines
   def splitByTabAndStrip(string: String) = string.split('\t')
+  def splitBySpaceTabAndStrip(string: String) = string.split(" \t")
 
   // Process runs of Some in list.
   // scala>    processAdjacent((l: List[Option[Int]]) => List.fill(l.length)(Some(l.flatten.max)),

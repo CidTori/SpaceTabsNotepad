@@ -13,7 +13,7 @@ import scala.swing.event.{Key, KeyPressed}
 
 import BuildInfo.{appName, appVersion}
 
-import elasticTabstops.{splitByNewline, splitByTabAndStrip, calcTabstopPositions, spacesToTabs, tabsToSpaces}
+import elasticTabstops.{splitByNewline, splitByTabAndStrip, splitBySpaceTabAndStrip, calcTabstopPositions, spacesToTabs, tabsToSpaces}
 import fileHandling.{chooseAndLoadTextFile, loadScratchFile, loadTextFile, saveTextFile, saveTextFileAs, scratchFilePath}
 import settings.{FontInfo, Settings}
 
@@ -137,7 +137,43 @@ package object textPanes:
       val textPerLine = elements.map(el => doc.getText(el.getStartOffset, el.getEndOffset - el.getStartOffset))
       val cellsPerLine = textPerLine.map(splitByTabAndStrip(_).toList)
       def calcCellWidth(text: String): Int = math.max(fm.stringWidth(text), emptyColumnWidthMinusPaddingPx) + columnPaddingPx
-      for (tabstopPositionsThisLine, element) <- calcTabstopPositions(cellsPerLine, calcCellWidth).zip(elements) do
+      val cellsPerSuperCellPerLine = textPerLine.map(splitBySpaceTabAndStrip(_).toList.map(splitByTabAndStrip(_).toList))
+      val maxNofSuperCells = cellsPerSuperCellPerLine.map(_.length).max
+      val cellsPerSuperCellPerCol = (0 until maxNofSuperCells).map(idx => cellsPerSuperCellPerLine.map(_.lift(idx).getOrElse(List.empty))).toList
+      def calcLastCellWidth(text: String): Int = fm.stringWidth(text) + columnPaddingPx
+      def f(g: List[List[String]] => List[List[Int]]): List[List[Int]] =
+        val value = cellsPerSuperCellPerCol.init.map(cellsPerSuperCellThisCol =>
+          val tabstopPositionsThisCol = g(cellsPerSuperCellThisCol)
+          val maxNofCells = cellsPerSuperCellThisCol.map(_.length).max
+          val value2 = cellsPerSuperCellThisCol.map(_.lift(maxNofCells - 1) match {
+            case Some(v) => List(v, "")
+            case None => List("")
+          })
+          val value3 = calcTabstopPositions(value2, calcLastCellWidth)
+          val lastTabstopPositionsThisCol = value3.map {
+            case Nil => None
+            case List(v) => Some(v)
+          }
+          val value1 = tabstopPositionsThisCol.zip(lastTabstopPositionsThisCol).map {
+            case (tabstopPositionsThisSuperCell, Some(lastTabstopThisSuperCell)) =>
+              val i = tabstopPositionsThisSuperCell.lastOption.getOrElse(0) + lastTabstopThisSuperCell
+              tabstopPositionsThisSuperCell :+ i
+            case (tabstopPositionsThisSuperCell, None) => tabstopPositionsThisSuperCell
+          }
+          value1
+        )
+        val value1 = cellsPerSuperCellPerCol.lastOption.map(g).getOrElse(List.empty)
+        val tabstopPositionsPerSuperCellPerCol = value :+ value1
+        val transpose = tabstopPositionsPerSuperCellPerCol.transpose
+        transpose.map(l => l match {
+          case head +: tail =>
+            val value = tail.scanLeft(head)((p, c) => c.map(_ + p.lastOption.getOrElse(0)))
+            value.flatten
+          case Nil => Nil
+        })
+
+      val value = f(cellsPerLine => calcTabstopPositions(cellsPerLine, calcCellWidth))
+      for (tabstopPositionsThisLine, element) <- value.zip(elements) do
         val tabStops = tabstopPositionsThisLine.map(i => new TabStop(i.toFloat))
         val attributes = new SimpleAttributeSet()
         StyleConstants.setTabSet(attributes, new TabSet(tabStops.toArray))
