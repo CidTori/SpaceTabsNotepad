@@ -6,6 +6,7 @@ package object elasticTabstops:
   // convenience functions to wrap Java's unintuitive split method
   def splitByNewline(string: String) = string.split("\n", -1)  // -1 so we get trailing empty lines
   def splitByTabAndStrip(string: String) = string.split('\t')
+  def splitBySpaceTabAndStrip(string: String) = string.split(" \t")
 
   // Process runs of Some in list.
   // scala>    processAdjacent((l: List[Option[Int]]) => List.fill(l.length)(Some(l.flatten.max)),
@@ -24,7 +25,7 @@ package object elasticTabstops:
   // Replace each item in a run with its highest value.
   // scala>        maxAdjacent(List(Some(1), Some(2), None, Some(4), None, None, Some(7), Some(8), Some(9)))
   // res0: List[Option[Int]] = List(Some(2), Some(2), None, Some(4), None, None, Some(9), Some(9), Some(9))
-  private def maxAdjacent(column: List[Option[Int]]): List[Option[Int]] =
+  def maxAdjacent(column: List[Option[Int]]): List[Option[Int]] =
     processAdjacent(column) { l =>
       List.fill(l.length)(Some(l.flatten.max))
     }
